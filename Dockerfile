@@ -1,5 +1,6 @@
 FROM python:3.10-slim
 
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies (updated for Debian Trixie)
@@ -12,17 +13,22 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY app.py .
 COPY templates/ templates/
 
-RUN mkdir -p static
-
+# Set environment variables
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 
+# Expose port
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "1", "--timeout", "180", "--worker-class", "sync", "app:app"]
+# Run with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "2", "--timeout", "300", "app:app"]
