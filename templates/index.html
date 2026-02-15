@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Flow - Video Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            animation: gradientShift 15s ease infinite;
+            background-size: 200% 200%;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1);
+            max-width: 950px;
+            width: 100%;
+            padding: 48px;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 3em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.15em;
+            font-weight: 400;
+        }
+
+        .upload-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .upload-box {
+            border: 3px dashed rgba(102, 126, 234, 0.3);
+            border-radius: 20px;
+            padding: 40px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(240, 147, 251, 0.05) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(240, 147, 251, 0.1) 100%);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .upload-box:hover::before {
+            opacity: 1;
+        }
+
+        .upload-box:hover {
+            border-color: rgba(102, 126, 234, 0.6);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.2);
+        }
+
+        .upload-icon {
+            font-size: 3.5em;
+            margin-bottom: 16px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .upload-box h3 {
+            color: #667eea;
+            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: 1.3em;
+        }
+
+        .upload-box p {
+            color: #888;
+            font-size: 0.95em;
+        }
+
+        .preview-img {
+            max-width: 100%;
+            max-height: 220px;
+            border-radius: 12px;
+            margin-top: 16px;
+            display: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .prompt-section {
+            margin-bottom: 32px;
+        }
+
+        .prompt-section label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 1.15em;
+        }
+
+        .prompt-input {
+            width: 100%;
+            padding: 18px;
+            border: 2px solid #e8e8e8;
+            border-radius: 14px;
+            font-size: 1.05em;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            background: #fafafa;
+        }
+
+        .prompt-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 1.25em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-bottom: 24px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .generate-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .generate-btn:hover::before {
+            left: 100%;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+        }
+
+        .generate-btn:active {
+            transform: translateY(-1px);
+        }
+
+        .generate-btn:disabled {
+            background: linear-gradient(135deg, #ccc 0%, #aaa 100%);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .result-video {
+            width: 100%;
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+            margin-bottom: 24px;
+        }
+
+        .download-btn {
+            padding: 14px 36px;
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.05em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 20px rgba(76, 175, 80, 0.3);
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px rgba(76, 175, 80, 0.4);
+        }
+
+        .loader {
+            border: 5px solid rgba(102, 126, 234, 0.1);
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 24px auto;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .examples {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .examples h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .examples ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .examples li {
+            padding: 8px 0;
+            color: #666;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .examples li:hover {
+            color: #667eea;
+        }
+
+        .examples li::before {
+            content: "✨ ";
+            margin-right: 5px;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 10px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+            border-radius: 10px;
+            width: 0%;
+            transition: width 0.3s ease;
+            animation: shimmer 2s infinite;
+            background-size: 200% 100%;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -100% 0; }
+            100% { background-position: 100% 0; }
+        }
+
+        .status-text {
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .upload-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .options {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 AI Flow</h1>
+        <p class="subtitle">Generate amazing transition videos between two images</p>
+
+        <div class="upload-section">
+            <div class="upload-box" onclick="document.getElementById('image1').click()">
+                <div class="upload-icon">📸</div>
+                <h3>Start Frame</h3>
+                <p>Click to upload</p>
+                <input type="file" id="image1" accept="image/*">
+                <img class="preview-img" id="preview1">
+            </div>
+
+            <div class="upload-box" onclick="document.getElementById('image2').click()">
+                <div class="upload-icon">🎞️</div>
+                <h3>End Frame</h3>
+                <p>Click to upload</p>
+                <input type="file" id="image2" accept="image/*">
+                <img class="preview-img" id="preview2">
+            </div>
+        </div>
+
+        <div class="prompt-section">
+            <label for="prompt">✍️ Describe the transition:</label>
+            <textarea 
+                id="prompt" 
+                class="prompt-input" 
+                rows="3" 
+                placeholder="e.g., house grows on giant tree, smooth morphing, cinematic transition"
+            >smooth transition between frames</textarea>
+        </div>
+
+        <div class="options">
+            <div class="option-group">
+                <label for="num-frames">🎞️ Number of Frames:</label>
+                <select id="num-frames">
+                    <option value="8">8 frames (Fast)</option>
+                    <option value="16" selected>16 frames (Balanced)</option>
+                    <option value="24">24 frames (Smooth)</option>
+                    <option value="32">32 frames (Ultra Smooth)</option>
+                </select>
+            </div>
+
+            <div class="option-group">
+                <label for="fps">⚡ Frame Rate (FPS):</label>
+                <select id="fps">
+                    <option value="4">4 FPS (Slow Motion)</option>
+                    <option value="8" selected>8 FPS (Standard)</option>
+                    <option value="12">12 FPS (Smooth)</option>
+                    <option value="16">16 FPS (Fast)</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="generate-btn" onclick="generateVideo()">
+            🚀 Generate Video
+        </button>
+
+        <div class="loader" id="loader"></div>
+        <div class="status" id="status">
+            <div class="status-text"></div>
+            <div class="progress-container" style="display: none;">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+        </div>
+
+        <div class="result-section" id="result">
+            <h3>🎉 Your Video is Ready!</h3>
+            <video class="result-video" id="result-video" controls></video>
+            <button class="download-btn" onclick="downloadVideo()">
+                ⬇️ Download Video
+            </button>
+        </div>
+
+        <div class="examples">
+            <h4>💡 Example Prompts:</h4>
+            <ul>
+                <li onclick="setPrompt('house grows on giant tree')">house grows on giant tree</li>
+                <li onclick="setPrompt('day transforms into night, smooth cinematic')">day transforms into night, smooth cinematic</li>
+                <li onclick="setPrompt('portrait ages from young to old')">portrait ages from young to old</li>
+                <li onclick="setPrompt('winter landscape melts into spring')">winter landscape melts into spring</li>
+                <li onclick="setPrompt('city morphs into futuristic metropolis')">city morphs into futuristic metropolis</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let currentVideoData = null;
+
+        // Image preview handlers
+        document.getElementById('image1').addEventListener('change', function(e) {
+            previewImage(e.target, 'preview1');
+        });
+
+        document.getElementById('image2').addEventListener('change', function(e) {
+            previewImage(e.target, 'preview2');
+        });
+
+        function previewImage(input, previewId) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById(previewId);
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function setPrompt(text) {
+            document.getElementById('prompt').value = text;
+        }
+
+        function showStatus(message, type, progress = null) {
+            const status = document.getElementById('status');
+            const statusText = status.querySelector('.status-text') || status;
+            const progressContainer = status.querySelector('.progress-container');
+            const progressBar = document.getElementById('progress-bar');
+            
+            if (status.querySelector('.status-text')) {
+                statusText.textContent = message;
+            } else {
+                status.textContent = message;
+            }
+            
+            status.className = 'status ' + type;
+            
+            if (progress !== null && progressContainer && progressBar) {
+                progressContainer.style.display = 'block';
+                progressBar.style.width = progress + '%';
+            } else if (progressContainer) {
+                progressContainer.style.display = 'none';
+            }
+        }
+
+        function hideStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+
+        async function generateVideo() {
+            const image1 = document.getElementById('image1').files[0];
+            const image2 = document.getElementById('image2').files[0];
+            const prompt = document.getElementById('prompt').value;
+            const numFrames = document.getElementById('num-frames').value;
+            const fps = document.getElementById('fps').value;
+
+            // Validation
+            if (!image1 || !image2) {
+                showStatus('❌ Please upload both start and end images', 'error');
+                return;
+            }
+
+            if (!prompt.trim()) {
+                showStatus('❌ Please enter a prompt describing the transition', 'error');
+                return;
+            }
+
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('image1', image1);
+            formData.append('image2', image2);
+            formData.append('prompt', prompt);
+            formData.append('num_frames', numFrames);
+            formData.append('fps', fps);
+
+            // Show loading
+            document.querySelector('.generate-btn').disabled = true;
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
+            
+            // Show progress updates
+            showStatus('🎬 Preparing images...', 'info', 10);
+            
+            setTimeout(() => {
+                showStatus('🔄 Analyzing optical flow...', 'info', 30);
+            }, 500);
+            
+            setTimeout(() => {
+                showStatus(`🎨 Generating ${numFrames} transition frames...`, 'info', 50);
+            }, 1500);
+            
+            setTimeout(() => {
+                showStatus('🎞️ Rendering video...', 'info', 80);
+            }, 3000);
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Display video
+                    showStatus('✅ Video generated successfully!', 'success', 100);
+                    currentVideoData = data.video;
+                    const videoElement = document.getElementById('result-video');
+                    videoElement.src = 'data:video/mp4;base64,' + data.video;
+                    
+                    document.getElementById('result').style.display = 'block';
+                    
+                    // Auto-hide success message after 3 seconds
+                    setTimeout(() => {
+                        document.getElementById('status').style.display = 'none';
+                    }, 3000);
+                } else {
+                    showStatus('❌ ' + (data.error || 'Failed to generate video'), 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('❌ Network error. Please check your connection and try again.', 'error');
+            } finally {
+                document.querySelector('.generate-btn').disabled = false;
+                document.getElementById('loader').style.display = 'none';
+            }
+        }
+
+        function downloadVideo() {
+            if (!currentVideoData) return;
+
+            const link = document.createElement('a');
+            link.href = 'data:video/mp4;base64,' + currentVideoData;
+            link.download = 'ai-flow-video-' + Date.now() + '.mp4';
+            link.click();
+        }
+    </script>
+</body>
+</html>
