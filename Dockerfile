@@ -1,34 +1,27 @@
 FROM python:3.10-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies (updated for Debian Trixie)
+# Install only essential system dependencies
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy and install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application
 COPY app.py .
 COPY templates/ templates/
+RUN mkdir -p static
 
-# Set environment variables
+# Environment
 ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
 EXPOSE 8000
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "2", "--timeout", "300", "app:app"]
+# Run with minimal resources
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "1", "--timeout", "300", "--worker-class", "sync", "--max-requests", "100", "--max-requests-jitter", "10", "app:app"]
