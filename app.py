@@ -1,213 +1,139 @@
 import os
 import io
 import base64
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
-import torch
 import numpy as np
 from PIL import Image
 import cv2
-from diffusers import StableDiffusionInstructPix2PixPipeline, DPMSolverMultistepScheduler
-from diffusers.utils import load_image
 import tempfile
-import warnings
-warnings.filterwarnings('ignore')
+import gc
 
 app = Flask(__name__)
 CORS(app)
 
-# Global variables for models
-pipe = None
-device = "cuda" if torch.cuda.is_available() else "cpu"
+def apply_easing(t, easing_type='ease_in_out'):
+    """Apply easing function"""
+    if easing_type == 'ease_in_out':
+        return t * t * (3 - 2 * t)
+    return t
 
-def initialize_models():
-    """Initialize AI models"""
-    global pipe
-    
-    print(f"🚀 Initializing models on {device}...")
-    
-    try:
-        # Use InstructPix2Pix for image-to-image generation
-        model_id = "timbrooks/instruct-pix2pix"
-        pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            model_id,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            safety_checker=None
-        )
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(device)
-        
-        # Enable memory optimizations
-        if device == "cuda":
-            pipe.enable_attention_slicing()
-            pipe.enable_vae_slicing()
-        
-        print("✅ Models loaded successfully!")
-        return True
-    except Exception as e:
-        print(f"❌ Error loading models: {e}")
-        print("⚠️ Running in demo mode with basic interpolation")
-        return False
-
-def interpolate_frames(image1, image2, num_frames=16):
-    """Basic frame interpolation between two images"""
+def interpolate_frames_smooth(image1, image2, num_frames=12):
+    """Memory-optimized frame interpolation"""
     frames = []
     
-    # Convert PIL to numpy
-    img1 = np.array(image1)
-    img2 = np.array(image2)
+    # Convert and resize to smaller size for memory efficiency
+    img1 = np.array(image1.resize((384, 384)))
+    img2 = np.array(image2.resize((384, 384)))
     
-    # Ensure same size
-    if img1.shape != img2.shape:
-        img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+    img1_float = img1.astype(np.float32)
+    img2_float = img2.astype(np.float32)
     
-    # Generate interpolated frames
+    # Calculate optical flow
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+    
+    flow = cv2.calcOpticalFlowFarneback(
+        gray1, gray2, None,
+        pyr_scale=0.5, levels=2, winsize=10,
+        iterations=2, poly_n=5, poly_sigma=1.1, flags=0
+    )
+    
+    # Generate frames
     for i in range(num_frames):
-        alpha = i / (num_frames - 1)
-        frame = cv2.addWeighted(img1, 1 - alpha, img2, alpha, 0)
-        frames.append(Image.fromarray(frame))
-    
-    return frames
-
-def generate_transition_frames(image1, image2, prompt, num_frames=16):
-    """Generate transition frames using AI"""
-    global pipe
-    
-    frames = []
-    
-    if pipe is None:
-        print("⚠️ Using basic interpolation (models not loaded)")
-        return interpolate_frames(image1, image2, num_frames)
-    
-    try:
-        # Resize images to optimal size
-        target_size = (512, 512)
-        img1 = image1.resize(target_size)
-        img2 = image2.resize(target_size)
+        t = i / (num_frames - 1)
+        alpha = apply_easing(t)
         
-        # Generate intermediate frames using the prompt
-        for i in range(num_frames):
-            alpha = i / (num_frames - 1)
-            
-            if i == 0:
-                frames.append(img1)
-            elif i == num_frames - 1:
-                frames.append(img2)
-            else:
-                # Blend images for guidance
-                blend_img = Image.blend(img1, img2, alpha)
-                
-                # Generate frame with prompt guidance
-                modified_prompt = f"{prompt}, smooth transition, frame {i}/{num_frames}"
-                
-                with torch.no_grad():
-                    generated = pipe(
-                        modified_prompt,
-                        image=blend_img,
-                        num_inference_steps=20,
-                        image_guidance_scale=1.5,
-                        guidance_scale=7.5,
-                    ).images[0]
-                
-                frames.append(generated)
-                
-            print(f"Generated frame {i+1}/{num_frames}")
-    
-    except Exception as e:
-        print(f"⚠️ Error in AI generation: {e}")
-        print("⚠️ Falling back to basic interpolation")
-        return interpolate_frames(image1, image2, num_frames)
+        if i == 0:
+            frames.append(Image.fromarray(img1))
+        elif i == num_frames - 1:
+            frames.append(Image.fromarray(img2))
+        else:
+            # Simple blend with flow guidance
+            blended = cv2.addWeighted(img1_float, 1 - alpha, img2_float, alpha, 0)
+            blended = blended.astype(np.uint8)
+            frames.append(Image.fromarray(blended))
+        
+        # Force garbage collection
+        if i % 4 == 0:
+            gc.collect()
     
     return frames
 
 def frames_to_video(frames, output_path, fps=8):
-    """Convert frames to video file"""
+    """Convert frames to video"""
     if not frames:
-        raise ValueError("No frames to convert")
+        raise ValueError("No frames")
     
-    # Get frame size
     frame = np.array(frames[0])
     height, width = frame.shape[:2]
     
-    # Create video writer
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
-    # Write frames
     for frame in frames:
         frame_array = np.array(frame)
         frame_bgr = cv2.cvtColor(frame_array, cv2.COLOR_RGB2BGR)
         out.write(frame_bgr)
     
     out.release()
-    print(f"✅ Video saved to {output_path}")
 
 @app.route('/')
 def index():
-    """Serve the main page"""
     return render_template('index.html')
 
 @app.route('/generate', methods=['POST'])
 def generate():
-    """Generate video from two images and prompt"""
     try:
-        # Get uploaded images
         if 'image1' not in request.files or 'image2' not in request.files:
-            return jsonify({'error': 'Please upload both start and end images'}), 400
+            return jsonify({'error': 'Please upload both images'}), 400
         
         image1_file = request.files['image1']
         image2_file = request.files['image2']
-        prompt = request.form.get('prompt', 'smooth transition')
-        num_frames = int(request.form.get('num_frames', 16))
+        num_frames = min(int(request.form.get('num_frames', 12)), 16)  # Limit frames
         fps = int(request.form.get('fps', 8))
         
         # Load images
         image1 = Image.open(image1_file).convert('RGB')
         image2 = Image.open(image2_file).convert('RGB')
         
-        print(f"🎬 Generating video: '{prompt}' ({num_frames} frames @ {fps} fps)")
+        print(f"🎬 Generating {num_frames} frames @ {fps} fps")
         
-        # Generate transition frames
-        frames = generate_transition_frames(image1, image2, prompt, num_frames)
+        # Generate frames
+        frames = interpolate_frames_smooth(image1, image2, num_frames)
         
-        # Create temporary video file
+        # Create video
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
             video_path = tmp_file.name
         
-        # Convert frames to video
         frames_to_video(frames, video_path, fps)
         
-        # Read video and encode to base64
+        # Read and encode
         with open(video_path, 'rb') as f:
             video_data = f.read()
             video_base64 = base64.b64encode(video_data).decode('utf-8')
         
-        # Clean up
+        # Cleanup
         os.remove(video_path)
+        del frames
+        gc.collect()
         
         return jsonify({
             'success': True,
             'video': video_base64,
-            'message': f'Generated {num_frames} frames successfully!'
+            'message': f'Generated {num_frames} frames!'
         })
     
     except Exception as e:
         print(f"❌ Error: {e}")
+        gc.collect()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'device': device,
-        'model_loaded': pipe is not None
-    })
+    return jsonify({'status': 'healthy', 'mode': 'lightweight'})
 
 if __name__ == '__main__':
-    # Initialize models on startup
-    initialize_models()
-    
-    # Run the app
+    print("🚀 Starting AI Flow (Memory Optimized)")
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=False)
